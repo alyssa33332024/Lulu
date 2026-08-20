@@ -1,0 +1,16 @@
+# 本地曲库元数据（Tools / Sing）；path 相对 lulu-agent 根目录
+runtime: local_files
+
+songs:
+  - id: one_last_time
+    title: One Last Time
+    artist: Ariana Grande
+    aliases:
+      - one last time
+      - One Last Time
+      - 最后一次
+      - ariana
+    path: data/songs/one_last_time.mp3
+    format: mp3
+
+single_track_autoplay: true

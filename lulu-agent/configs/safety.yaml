@@ -1,0 +1,10 @@
+# 危机词表（SafetyService）；命中则走兜底回复，不进 DAG
+crisis_terms:
+  - 不想活了
+  - 结束生命
+  - 自杀
+  - 自残
+  - kill myself
+  - suicide
+
+fallback_reply: 我有点担心你现在的状态。你愿意的话，先跟身边信任的人说说，或者打心理援助热线。我会陪着你。

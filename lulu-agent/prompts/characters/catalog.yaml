@@ -1,0 +1,37 @@
+default_card_id: default
+# highest_unlocked | user_selected
+active_policy: user_selected
+
+metrics:
+  - total_turns
+  - active_days
+  - songs_played
+  - reminders_set
+
+cards:
+  - id: default
+    title: 初见 LuLu
+    stage: 0
+    unlock: always
+    prompt: cards/default.md
+    guest_safe: true
+    # avatar: CoolBanana.vrm
+    # tts_voice: volc_xxx
+
+  - id: cozy
+    title: 熟络的 LuLu
+    stage: 1
+    unlock:
+      require_all:
+        - { metric: total_turns, gte: 30 }
+        - { metric: active_days, gte: 3 }
+    prompt: cards/cozy.md
+
+  - id: playful
+    title: 更活泼的 LuLu
+    stage: 2
+    unlock:
+      require_all:
+        - { metric: total_turns, gte: 100 }
+        - { metric: songs_played, gte: 5 }
+    prompt: cards/playful.md

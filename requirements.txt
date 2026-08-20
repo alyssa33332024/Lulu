@@ -1,0 +1,18 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+openai>=1.55.0
+pydantic>=2.9.0
+pydantic-settings>=2.6.0
+python-dotenv>=1.0.1
+sqlalchemy>=2.0.36
+aiosqlite>=0.20.0
+httpx>=0.27.0
+pyyaml>=6.0.2
+jinja2>=3.1.4
+python-multipart>=0.0.12
+json_repair>=0.30.0
+numpy>=1.26.0
+websockets>=13.0
+tzdata>=2024.1
+# faster memory2 vector search; falls back to table scan if missing
+sqlite-vec>=0.1.0

@@ -1,0 +1,35 @@
+# 只打包大脑。桌宠 Electron 窗口在用户本机运行，不进容器。
+#
+#   docker compose up -d --build
+#   docker compose --profile ollama up -d --build
+#
+# 密钥来自仓库根目录 .env
+
+services:
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      CHAT_DRAFT_BACKEND: ark
+      CHAT_AGENT_BACKEND: ark
+      INTENT_MODEL_BACKEND: ark_json
+      OLLAMA_HOST: http://ollama:11434
+    volumes:
+      - agent-data:/app/data
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  agent-data:
+  ollama-data:

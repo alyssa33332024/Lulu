@@ -1,0 +1,51 @@
+# StartVoiceChat 配置模板（实时对话式 AI）
+# 文档：https://www.volcengine.com/docs/6348/1558163
+# ASR：https://www.volcengine.com/docs/6348/1581712（配置语音识别）
+# TTS：https://www.volcengine.com/docs/6348/1581713（配置语音合成）
+# 方舟「接入语音模型」导读：https://docs.volcengine.com/docs/82379/2516286
+#
+# 重要：ASR/TTS 的 AppId/Token 来自【豆包语音控制台】，不是 RTC AppId/AppKey。
+# RTC AppId 只用于进房；CustomLLM 指向本仓库 /api/chat-stream。
+
+AppId: "${RTC_APP_ID}"          # 实时音视频应用 AppId（你截图那组）
+RoomId: "lulu-room-1"
+TaskId: "lulu-task-1"
+AgentConfig:
+  UserId: "lulu-agent"
+  TargetUserId: ["user-1"]
+  # 声纹：RegisterVoicePrint 成功后填 VoicePrintId
+  # VoicePrint:
+  #   Mode: 1
+  #   IdList: ["vp_xxx"]
+
+Config:
+  ASRConfig:
+    Provider: volcano
+    ProviderParams:
+      Mode: bigmodel
+      # —— 自行开通豆包语音 ASR 时填下面（推荐）——
+      # AppId / AccessToken：豆包语音控制台「流式语音识别」应用
+      AppId: "${SPEECH_ASR_APP_ID}"
+      AccessToken: "${SPEECH_ASR_ACCESS_TOKEN}"
+      ApiResourceId: volc.seedasr.sauc.duration
+      StreamMode: 2
+      VolcanoASRParameters: "{}"
+
+  TTSConfig:
+    Provider: volcano_bidirection
+    ProviderParams:
+      Credential:
+        # —— 自行开通豆包语音 TTS 时填 ——
+        AppId: "${SPEECH_TTS_APP_ID}"
+        Token: "${SPEECH_TTS_ACCESS_TOKEN}"
+        ResourceId: seed-tts-2.0
+      # 透传参数：音色需与 ResourceId 匹配（2.0 用 uranus 等 2.0 音色）
+      VolcanoTTSParameters: '{"req_params":{"speaker":"saturn_zh_female_tiaopigongzhu_tob","additions":{"disable_markdown_filter":true}}}'
+
+  LLMConfig:
+    Mode: CustomLLM
+    # 火山会回调此地址；本地需 HTTPS 公网（ngrok）
+    URL: "${CUSTOM_LLM_PUBLIC_URL}/api/chat-stream"
+    APIKey: "${CUSTOM_LLM_API_KEY}"
+    # 流式 OpenAI 兼容
+    Streaming: true

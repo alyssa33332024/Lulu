@@ -1,0 +1,25 @@
+{
+  "name": "lulu-desktop-companion",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "electron/main.mjs",
+  "scripts": {
+    "desktop": "concurrently -k -n brain,web,ws,app -c yellow,cyan,magenta,green \"node scripts/start-brain.mjs\" \"vite\" \"node server/ws-server.js\" \"electron .\"",
+    "start": "npm run desktop",
+    "dev:ws": "node server/ws-server.js",
+    "brain": "node scripts/start-brain.mjs",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@pixiv/three-vrm": "^3.4.2",
+    "@pixiv/three-vrm-animation": "^3.5.5",
+    "three": "^0.175.0",
+    "ws": "^8.18.1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "electron": "35.4.0",
+    "vite": "^6.2.0"
+  }
+}

@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LuLu — 打开桌宠</title>
+  <meta name="description" content="她住在你的桌面上。喊一声露露，就能唤醒。">
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+  <canvas id="petals" aria-hidden="true"></canvas>
+
+  <nav class="site-nav" aria-label="导航">
+    <div class="nav-inner">
+      <a class="brand" href="#top">
+        <span class="brand-mark" aria-hidden="true">
+          <svg class="brand-sakura" viewBox="0 0 24 24">
+            <defs>
+              <linearGradient id="brandSakura" x1="4" y1="2" x2="20" y2="22" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#f5a8bc"/>
+                <stop offset="1" stop-color="#d94f6e"/>
+              </linearGradient>
+            </defs>
+            <g fill="url(#brandSakura)">
+              <ellipse cx="12" cy="6.15" rx="3.05" ry="4.7"/>
+              <ellipse cx="12" cy="6.15" rx="3.05" ry="4.7" transform="rotate(72 12 12)"/>
+              <ellipse cx="12" cy="6.15" rx="3.05" ry="4.7" transform="rotate(144 12 12)"/>
+              <ellipse cx="12" cy="6.15" rx="3.05" ry="4.7" transform="rotate(216 12 12)"/>
+              <ellipse cx="12" cy="6.15" rx="3.05" ry="4.7" transform="rotate(288 12 12)"/>
+            </g>
+            <circle cx="12" cy="12" r="2.15" fill="#fff6f8"/>
+            <circle cx="12" cy="12" r="1.05" fill="#e86b88"/>
+          </svg>
+        </span>
+        <span class="brand-name">LuLu<i>露露</i></span>
+      </a>
+      <div class="nav-account">
+        <button class="nav-avatar" id="accountBtn" type="button" aria-label="登录" aria-expanded="false" aria-haspopup="true">
+          <svg class="nav-avatar-icon" id="avatarGuest" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="8.2" r="3.4" fill="none" stroke="currentColor" stroke-width="1.7"/>
+            <path d="M5.4 19.2c.8-3.4 3.4-5.2 6.6-5.2s5.8 1.8 6.6 5.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+          </svg>
+          <span class="nav-avatar-letter" id="avatarLetter" hidden></span>
+        </button>
+        <div class="account-pop" id="accountPop" hidden>
+          <form class="account-form" id="loginForm">
+            <p class="account-title">登录</p>
+            <label class="account-label" for="loginName">怎么称呼你</label>
+            <input class="account-input" id="loginName" name="name" type="text" maxlength="12" placeholder="主人" autocomplete="nickname" required>
+            <button class="btn btn-solid account-submit" type="submit">进入</button>
+          </form>
+          <div class="account-signed" id="signedPanel" hidden>
+            <p class="account-hello" id="accountHello"></p>
+            <button class="account-logout" id="logoutBtn" type="button">退出登录</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <main id="top" class="hero">
+    <div class="hero-glow" aria-hidden="true"></div>
+    <img class="hero-art" src="/assets/zome.png" alt="LuLu 桌宠形象" width="720" height="900">
+    <div class="hero-scrim" aria-hidden="true"></div>
+
+    <div class="hero-content">
+      <h1 class="hero-title">LuLu</h1>
+      <p class="hero-sub">她住在你的桌面上。喊一声露露，就能唤醒。</p>
+      <div class="hero-cta">
+        <button class="btn btn-solid" id="launchBtn" type="button">打开桌宠</button>
+        <p class="hero-hint" id="launchHint"></p>
+      </div>
+    </div>
+  </main>
+
+  <script src="/js/main.js"></script>
+</body>
+</html>
