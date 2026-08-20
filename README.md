@@ -3,9 +3,9 @@
 桌面陪伴：门户打开桌宠，喊「露露」唤醒；闲聊、唱歌、设提醒。
 
 ```text
-门户  lulu-portal          http://127.0.0.1:3920
-桌宠  Lulu-archive/desktop  Electron 窗口
-大脑  lulu-agent           http://127.0.0.1:8000
+门户  lulu-portal          
+桌宠  Lulu-archive/desktop 
+大脑  lulu-agent         
 ```
 
 密钥只放仓库根目录 **`.env`**（从 `.env.example` 复制）。不要提交 `.env`、`.venv`、`node_modules`、千问模型权重。
@@ -23,7 +23,7 @@ npm install
 npm start
 ```
 
-浏览器打开 http://127.0.0.1:3920 ，点「打开桌宠」。会同时拉起大脑和 Electron。
+浏览器打开，点「打开桌宠」。会同时拉起大脑和 Electron。
 
 单独跑大脑（调试）：
 
