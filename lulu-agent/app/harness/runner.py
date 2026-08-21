@@ -52,7 +52,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--suite",
         action="append",
-        choices=["safety", "routing", "skills", "rag", "draft", "identity", "character", "api", "all"],
+        choices=[
+            "safety",
+            "routing",
+            "skills",
+            "rag",
+            "draft",
+            "identity",
+            "character",
+            "api",
+            "turn",
+            "stream",
+            "memory",
+            "all",
+        ],
         default=None,
         help="Harness suite to run. Can be supplied multiple times.",
     )
@@ -87,12 +100,16 @@ def configure_environment() -> None:
             candidate.unlink()
 
     os.environ["DATABASE_URL"] = f"sqlite:///{db_path.as_posix()}"
-    os.environ.setdefault("AI_PROVIDER", "mock")
-    os.environ.setdefault("AGENT_FRAMEWORK", "dag_unidirectional")
-    os.environ.setdefault("TTS_ENABLED", "false")
-    os.environ.setdefault("ASR_ENABLED", "false")
-    os.environ.setdefault("MEMORY_EXTRACT_ENABLED", "false")
-    os.environ.setdefault("HARNESS_TARGET_DIR", str(target_dir))
+    os.environ["AI_PROVIDER"] = "mock"
+    os.environ["INTENT_MODEL_BACKEND"] = "ark_json"
+    os.environ["CHAT_DRAFT_BACKEND"] = "ark"
+    os.environ["CHAT_AGENT_BACKEND"] = "ark"
+    os.environ["AGENT_FRAMEWORK"] = "dag_unidirectional"
+    os.environ["TTS_ENABLED"] = "false"
+    os.environ["ASR_ENABLED"] = "false"
+    os.environ["AKASHIC_OPTIMIZER_ENABLED"] = "false"
+    os.environ["AKASHIC_MEMORY_ROOT"] = str((target_dir / "memory_workspaces").resolve())
+    os.environ["HARNESS_TARGET_DIR"] = str(target_dir)
 
 
 def build_context() -> HarnessContext:
@@ -101,6 +118,7 @@ def build_context() -> HarnessContext:
 
     from app.core.bootstrap import init_db
     from app.core.config import get_settings
+    import app.core.bootstrap as bootstrap
     import app.core.database as database
 
     get_settings.cache_clear()
@@ -114,6 +132,8 @@ def build_context() -> HarnessContext:
         future=True,
     )
     database.SessionLocal = sessionmaker(bind=database.engine, autoflush=False, autocommit=False)
+    bootstrap.engine = database.engine
+    bootstrap.SessionLocal = database.SessionLocal
     init_db()
     return HarnessContext(
         root=_agent_root(),
@@ -137,6 +157,9 @@ def resolve_suites(requested: list[str] | None) -> list[tuple[str, Callable[[Har
         ("Identity / Memory Harness", run_identity_harness),
         ("Character / Unlock Harness", run_character_harness),
         ("API Harness", run_api_harness),
+        ("Turn Harness", run_turn_harness),
+        ("Stream Harness", run_stream_harness),
+        ("Memory / Compact Harness", run_memory_harness),
     ]
     if not requested or "all" in requested:
         return all_suites
@@ -149,6 +172,9 @@ def resolve_suites(requested: list[str] | None) -> list[tuple[str, Callable[[Har
         "identity": "Identity / Memory Harness",
         "character": "Character / Unlock Harness",
         "api": "API Harness",
+        "turn": "Turn Harness",
+        "stream": "Stream Harness",
+        "memory": "Memory / Compact Harness",
     }
     names = {aliases[item] for item in requested}
     return [suite for suite in all_suites if suite[0] in names]
@@ -231,7 +257,9 @@ def run_routing_harness(context: HarnessContext) -> dict:
 
 
 def run_skills_harness(context: HarnessContext) -> dict:
+    from app.agents.dag_runtime import AgentExecutor
     from app.agents.registry import AgentRegistry
+    from app.models.entities import ReminderItem
     from app.services.skills import SkillLoader
 
     skills_root = context.root / "skills"
@@ -255,14 +283,47 @@ def run_skills_harness(context: HarnessContext) -> dict:
     expect("FlexibleScheduleReminder" in rem.tool_names, "reminder missing FlexibleScheduleReminder")
     expect(rem.max_tool_calls >= 2, "reminder tool budget should allow ParseDate + Schedule")
 
+    db = context.session()
+    try:
+        executor = AgentExecutor(db)
+        sung = executor.run(
+            "sing",
+            character="你是 LuLu。",
+            common_limit="口语短句。",
+            query="唱一首 One Last Time",
+            history=[],
+        )
+        expect("PlaySong" in sung.tool_names, f"sing did not call PlaySong: {sung.tool_names}")
+        expect(bool(sung.play_song_path), "sing should resolve a local play_song_path")
+        expect(bool(sung.text.strip()), "sing should speak a confirmation")
+
+        reminded = executor.run(
+            "reminder",
+            character="你是 LuLu。",
+            common_limit="口语短句。",
+            query="提醒我明天上午九点半开会",
+            history=[],
+        )
+        expect(
+            "FlexibleScheduleReminder" in reminded.tool_names,
+            f"reminder did not schedule: {reminded.tool_names}",
+        )
+        row = db.query(ReminderItem).order_by(ReminderItem.id.desc()).first()
+        expect(row is not None, "reminder tool did not persist ReminderItem")
+    finally:
+        db.close()
+
     return {
         "skillDirsWithSkillMd": found,
         "singTools": list(sing.tool_names),
         "reminderTools": list(rem.tool_names),
+        "singPlayed": True,
+        "reminderPersisted": True,
     }
 
 
 def run_rag_harness(context: HarnessContext) -> dict:
+    from app.services.knowledge import KnowledgeService
     from app.services.router import RouterService
 
     dataset = context.root / "data" / "intent_rag_eval.json"
@@ -270,15 +331,16 @@ def run_rag_harness(context: HarnessContext) -> dict:
     cases = json.loads(dataset.read_text(encoding="utf-8"))
     expect(isinstance(cases, list) and len(cases) > 0, "eval dataset empty")
 
+    knowledge = KnowledgeService()
     router = RouterService()
-    router._llm_route = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("harness: skip llm"))  # type: ignore
 
     hit = 0
     details = []
     for row in cases:
         query = row["query"]
         expect_intents = list(row["expect"])
-        plan = router.route(query, hits=[], recent=[])
+        hits = knowledge.recall(query)
+        plan = router.route(query, hits, recent=[])
         if plan.route == "chat":
             got = ["chat"]
         else:
@@ -299,21 +361,22 @@ def run_rag_harness(context: HarnessContext) -> dict:
 def run_draft_harness(context: HarnessContext) -> dict:
     from app.services.prompt import PromptService
 
-    prompt = PromptService()
-    cases = [
-        ("skill-sing", "唱一首歌给我听", True),
-        ("skill-reminder", "提醒我明天开会", True),
-        ("chat", "今天心情一般", False),
-        ("hello", "你好呀", False),
-    ]
-    observed = []
-    for case_id, query, skip in cases:
-        got = prompt.should_skip_draft(query)
-        expect(got is skip, f"{case_id}: should_skip_draft expected {skip}, got {got}")
-        observed.append({"id": case_id, "skip": got})
-
     original = context.settings.draft_gate_enabled
     try:
+        context.settings.draft_gate_enabled = True
+        prompt = PromptService()
+        cases = [
+            ("skill-sing", "唱一首歌给我听", True),
+            ("skill-reminder", "提醒我明天开会", True),
+            ("chat", "今天心情一般", False),
+            ("hello", "你好呀", False),
+        ]
+        observed = []
+        for case_id, query, skip in cases:
+            got = prompt.should_skip_draft(query)
+            expect(got is skip, f"{case_id}: should_skip_draft expected {skip}, got {got}")
+            observed.append({"id": case_id, "skip": got})
+
         context.settings.draft_gate_enabled = False
         prompt2 = PromptService()
         expect(prompt2.should_skip_draft("唱一首歌") is False, "gate disabled should not skip")
@@ -462,7 +525,176 @@ def run_api_harness(context: HarnessContext) -> dict:
     skills = payload.get("skills") or []
     expect(isinstance(skills, list), "skills should be list")
 
-    return {"health": body, "agentStatus": {"framework": payload.get("framework"), "skillCount": len(skills)}}
+    chat = client.post("/api/turn", json={"query": "今天心情一般", "with_tts": False})
+    expect(chat.status_code == 200, f"/api/turn status {chat.status_code}")
+    turn = chat.json()
+    expect(turn.get("route") == "chat", f"/api/turn route {turn.get('route')}")
+    expect(bool(turn.get("reply")), "/api/turn empty reply")
+
+    # 用非问候语，确保走完整流式管线（route → sentence+ → done），而不是问候快路径。
+    stream = client.post("/api/turn/stream", json={"query": "今天心情一般", "with_tts": False})
+    expect(stream.status_code == 200, f"/api/turn/stream status {stream.status_code}")
+    events = [json.loads(ln) for ln in stream.text.splitlines() if ln.strip()]
+    types = [event.get("type") for event in events]
+    expect("error" not in types, f"stream raised error event: {events}")
+    expect(types[0] == "route", f"stream should open with route, got {types}")
+    expect("sentence" in types, f"stream missing sentence events: {types}")
+    expect(types[-1] == "done", f"stream should end with done, got {types}")
+    expect(bool(events[-1].get("reply")), "stream done carries empty reply")
+
+    return {
+        "health": body,
+        "agentStatus": {"framework": payload.get("framework"), "skillCount": len(skills)},
+        "turnRoute": turn.get("route"),
+        "streamEventTypes": types,
+    }
+
+
+def run_turn_harness(context: HarnessContext) -> dict:
+    from app.agents.harness import GREET_REPLY, LuluTurnHarness
+    from app.schemas.dtos import TurnRequest
+
+    db = context.session()
+    observed = []
+    try:
+        harness = LuluTurnHarness(db)
+
+        greet = harness.run(TurnRequest(query="你好", with_tts=False))
+        expect(greet.route == "greet", f"greet route {greet.route}")
+        expect(greet.reply == GREET_REPLY, f"greet reply {greet.reply}")
+        observed.append({"id": "greet", "route": greet.route})
+
+        blocked = harness.run(TurnRequest(query="我不想活了，想结束生命。", with_tts=False))
+        expect(blocked.safety_blocked, "crisis should block")
+        expect(blocked.route == "safety", f"safety route {blocked.route}")
+        observed.append({"id": "safety", "route": blocked.route})
+
+        chat = harness.run(TurnRequest(query="今天心情一般", with_tts=False))
+        expect(chat.route == "chat", f"chat route {chat.route}")
+        expect(bool(chat.reply.strip()), "chat empty reply")
+        expect(chat.draft_state == "used", f"chat draft_state {chat.draft_state}")
+        observed.append({"id": "chat", "route": chat.route, "draft": chat.draft_state})
+
+        sing = harness.run(TurnRequest(query="唱一首歌", with_tts=False))
+        expect(sing.route == "agents", f"sing route {sing.route}")
+        expect(bool(sing.play_song_path), "sing missing play_song_path")
+        tool_names = [tc.get("name") for tc in (sing.trace or {}).get("tool_calls") or []]
+        expect("PlaySong" in tool_names, f"sing tools {tool_names}")
+        observed.append({"id": "sing", "route": sing.route, "played": True})
+
+        reminder = harness.run(TurnRequest(query="提醒我明天上午九点半开会", with_tts=False))
+        expect(reminder.route == "agents", f"reminder route {reminder.route}")
+        rem_tools = [tc.get("name") for tc in (reminder.trace or {}).get("tool_calls") or []]
+        expect("FlexibleScheduleReminder" in rem_tools, f"reminder tools {rem_tools}")
+        observed.append({"id": "reminder", "route": reminder.route, "scheduled": True})
+
+        both = harness.run(TurnRequest(query="唱完再提醒我吃药", with_tts=False))
+        expect(both.route == "agents", f"both route {both.route}")
+        expect((both.trace or {}).get("execution") == "sequential", f"both execution {both.trace}")
+        expect(bool((both.trace or {}).get("coord_line")), "sequential needs coord_line")
+        observed.append({"id": "both-sequential", "route": both.route})
+    finally:
+        db.close()
+    return {"cases": observed}
+
+
+def run_stream_harness(context: HarnessContext) -> dict:
+    from app.agents.harness import LuluTurnHarness, REMINDER_WAIT_LINE
+    from app.schemas.dtos import TurnRequest
+
+    db = context.session()
+    try:
+        harness = LuluTurnHarness(db)
+
+        chat_types = []
+        sentences = []
+        done = None
+        for event in harness.iter_events(TurnRequest(query="今天心情一般", with_tts=False)):
+            chat_types.append(event.get("type"))
+            if event.get("type") == "sentence":
+                sentences.append(event.get("text") or "")
+            if event.get("type") == "done":
+                done = event
+        expect("route" in chat_types, f"chat stream types {chat_types}")
+        expect("sentence" in chat_types, f"chat stream missing sentence {chat_types}")
+        expect(done is not None and done.get("route") == "chat", f"chat done {done}")
+        expect(any(sentences), "chat stream empty sentences")
+
+        rem_types = []
+        rem_sentences = []
+        rem_done = None
+        for event in harness.iter_events(TurnRequest(query="提醒我明天上午九点半开会", with_tts=False)):
+            rem_types.append(event.get("type"))
+            if event.get("type") == "sentence":
+                rem_sentences.append(event.get("text") or "")
+            if event.get("type") == "done":
+                rem_done = event
+        expect(REMINDER_WAIT_LINE in rem_sentences, f"reminder wait missing: {rem_sentences}")
+        expect(rem_done is not None and rem_done.get("route") == "agents", f"reminder done {rem_done}")
+    finally:
+        db.close()
+    return {
+        "chatEvents": chat_types,
+        "chatSentences": len(sentences),
+        "reminderEvents": rem_types,
+    }
+
+
+def run_memory_harness(context: HarnessContext) -> dict:
+    from app.memory import AkashicMemoryFacade
+    from app.memory.md_store import MemoryStore
+    from app.memory.workspace import ensure_person_workspace, person_workspace
+    from app.models.entities import ChatMessage, ChatSession
+    from app.services.context import ContextService
+
+    pid = "harness_person"
+    ws = ensure_person_workspace(pid)
+    store = MemoryStore(ws)
+    store.write_long_term("# 长期记忆\n用户喜欢弹钢琴。\n")
+    fields = AkashicMemoryFacade().render_person_fields(pid, query="钢琴")
+    expect("钢琴" in (fields.user_profile or ""), f"MEMORY.md not injected: {fields.user_profile}")
+
+    AkashicMemoryFacade().consolidate_compressed_batch(
+        person_id=pid,
+        session_id="harness-compact",
+        messages=[
+            {"role": "user", "content": "我喜欢弹钢琴"},
+            {"role": "assistant", "content": "好呀，有空可以一起聊音乐。"},
+        ],
+    )
+    pending = MemoryStore(person_workspace(pid)).read_pending()
+    expect("钢琴" in pending or "preference" in pending, f"PENDING not archived: {pending!r}")
+
+    recalled = AkashicMemoryFacade().recall(pid, "钢琴")
+    expect(isinstance(recalled, list), "recall should return list")
+
+    original_keep = context.settings.context_keep_recent_tokens
+    db = context.session()
+    try:
+        context.settings.context_keep_recent_tokens = 8
+        session = ChatSession(public_id="harness-compress", title="compress")
+        db.add(session)
+        db.commit()
+        for i in range(6):
+            db.add(ChatMessage(session_id=session.public_id, role="user", content=f"这是第{i}轮很长的闲聊内容，用来触发压缩。"))
+            db.add(ChatMessage(session_id=session.public_id, role="assistant", content="嗯，我在听。"))
+        db.commit()
+        db.refresh(session)
+        batch = ContextService(db).maybe_compress(session, system_overhead="你是 LuLu。", force=True)
+        expect(batch is not None, "force compress returned no batch")
+        db.refresh(session)
+        expect(bool((session.summary or "").strip()), "compress did not write session.summary")
+    finally:
+        context.settings.context_keep_recent_tokens = original_keep
+        db.close()
+
+    return {
+        "workspace": str(ws),
+        "memoryInjected": True,
+        "pendingArchived": True,
+        "recallHits": len(recalled),
+        "compressed": True,
+    }
 
 
 def write_report(context: HarnessContext, results: list[CheckResult]) -> dict:

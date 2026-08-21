@@ -22,9 +22,12 @@ class Settings(BaseSettings):
     # SQLite by default so MVP runs without Docker MySQL
     database_url: str = f"sqlite:///{(ROOT / 'data' / 'lulu.db').as_posix()}"
 
+    # ark | mock（工程 harness 离线验收）
+    ai_provider: str = "ark"
+
     ark_api_key: str = ""
     ark_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"
-    ark_chat_model: str = "doubao-seed-2-1-pro-260628"
+    ark_chat_model: str = "doubao-seed-2-0-mini-260428"
     # 方舟 Flash：闲聊草稿 / 技能 Agent（CHAT_DRAFT_BACKEND / CHAT_AGENT_BACKEND=ark）
     ark_chat_fast_model: str = "doubao-seed-2-0-mini-260428"
     # 兼容旧名：未设 CHAT_DRAFT_BACKEND 时回落于此

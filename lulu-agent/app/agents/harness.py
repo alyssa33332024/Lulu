@@ -908,7 +908,11 @@ class LuluTurnHarness:
                 if self.settings.akashic_optimizer_on_compress:
                     self.akashic_memory.run_optimizer_once(person_id)
             except Exception:
-                pass
+                logger.exception(
+                    "akashic consolidate failed person=%s session=%s",
+                    person_id,
+                    session_id,
+                )
 
         threading.Thread(target=job, daemon=True).start()
 

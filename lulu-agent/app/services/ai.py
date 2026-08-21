@@ -18,7 +18,23 @@ class AIService:
     def __init__(self) -> None:
         s = get_settings()
         self.model = s.ark_chat_model
+        self._mock = s.ai_provider.strip().lower() == "mock"
+        if self._mock:
+            self.client = None  # type: ignore[assignment]
+            self.draft_backend = "mock"
+            self.agent_backend = "mock"
+            self.draft_client = None
+            self.fast_client = None
+            self.draft_model = "mock"
+            self.fast_model = "mock"
+            self._draft_extra_body = None
+            self._fast_extra_body = None
+            self._ark_extra_body = None
+            self._ollama_http = None
+            self._ollama_client = None
+            return
         self.client = OpenAI(base_url=s.ark_base_url, api_key=s.ark_api_key or "missing")
+        self._ark_extra_body = {"thinking": {"type": "disabled"}}
         self._ollama_http: httpx.Client | None = None
         self._ollama_client: OpenAI | None = None
 
@@ -51,7 +67,7 @@ class AIService:
             model = (s.chat_fast_ollama_model or s.intent_model_name or "qwen2.5:3b").strip()
             return self._ollama_client, model, None
         model = (s.ark_chat_fast_model or s.ark_chat_model).strip()
-        return self.client, model, {"thinking": {"type": "disabled"}}
+        return self.client, model, self._ark_extra_body
 
     def chat(
         self,
@@ -64,6 +80,10 @@ class AIService:
         extra_body: dict[str, Any] | None = None,
         client: OpenAI | None = None,
     ) -> dict[str, Any]:
+        if self._mock:
+            from app.services.ai_mock import mock_chat
+
+            return mock_chat(messages, tools=tools)
         api = client or self.client
         kwargs: dict[str, Any] = {
             "model": model or self.model,
@@ -74,8 +94,11 @@ class AIService:
         if tools:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
-        if extra_body:
-            kwargs["extra_body"] = extra_body
+        body = extra_body if extra_body is not None else (
+            self._ark_extra_body if api is self.client else None
+        )
+        if body:
+            kwargs["extra_body"] = body
         resp = api.chat.completions.create(**kwargs)
         msg = resp.choices[0].message
         tool_calls = []
@@ -100,6 +123,11 @@ class AIService:
         extra_body: dict[str, Any] | None = None,
         client: OpenAI | None = None,
     ) -> Iterator[str]:
+        if self._mock:
+            from app.services.ai_mock import mock_chat_stream
+
+            yield from mock_chat_stream(messages)
+            return
         api = client or self.client
         kwargs: dict[str, Any] = {
             "model": model or self.model,
@@ -108,8 +136,11 @@ class AIService:
             "max_tokens": max_tokens,
             "stream": True,
         }
-        if extra_body:
-            kwargs["extra_body"] = extra_body
+        body = extra_body if extra_body is not None else (
+            self._ark_extra_body if api is self.client else None
+        )
+        if body:
+            kwargs["extra_body"] = body
         stream = api.chat.completions.create(**kwargs)
         for chunk in stream:
             if not chunk.choices:

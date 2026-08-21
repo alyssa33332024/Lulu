@@ -28,7 +28,7 @@ def main() -> int:
         return 1
 
     base_url = os.getenv("ARK_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3")
-    model = os.getenv("ARK_CHAT_MODEL", "doubao-seed-2-1-pro-260628")
+    model = os.getenv("ARK_CHAT_MODEL", "doubao-seed-2-0-mini-260428")
 
     client = OpenAI(base_url=base_url, api_key=api_key)
     # 文本对话用 chat.completions；产品主路径不依赖 responses + input_image
@@ -39,6 +39,7 @@ def main() -> int:
             {"role": "user", "content": "你好，用一句话介绍你自己。"},
         ],
         max_tokens=64,
+        extra_body={"thinking": {"type": "disabled"}},
     )
     print(resp.choices[0].message.content)
     return 0

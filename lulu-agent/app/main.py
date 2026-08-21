@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 
 async def _warmup() -> None:
+    if get_settings().ai_provider.strip().lower() == "mock":
+        return
     try:
         from app.services.asr import recognize_pcm16
 

@@ -32,7 +32,10 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 VEC_DIM = 1024  # 默认维度，MemoryStore2 构造时可覆盖
-_LOCAL_TZ = ZoneInfo("Asia/Shanghai")
+try:
+    _LOCAL_TZ = ZoneInfo("Asia/Shanghai")
+except Exception:
+    _LOCAL_TZ = timezone(timedelta(hours=8))
 
 
 class MemoryHit(TypedDict):

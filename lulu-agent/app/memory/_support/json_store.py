@@ -169,7 +169,7 @@ def _atomic_write(
     # 2. 创建同目录唯一临时文件；新文件权限由内核直接应用 umask
     fd, temporary = _create_atomic_temp(path)
     try:
-        if target_mode is not None:
+        if target_mode is not None and hasattr(os, "fchmod"):
             os.fchmod(fd, target_mode)
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as stream:
             fd = -1
@@ -178,13 +178,19 @@ def _atomic_write(
             stream.flush()
             os.fsync(stream.fileno())
 
-        # 4. 原子替换并同步目录项
+        # 4. 原子替换并同步目录项（Windows 没有 O_DIRECTORY）
         _ = temporary.replace(path)
-        directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        dir_flags = os.O_RDONLY
+        if hasattr(os, "O_DIRECTORY"):
+            dir_flags |= os.O_DIRECTORY
         try:
-            os.fsync(directory_fd)
-        finally:
-            os.close(directory_fd)
+            directory_fd = os.open(path.parent, dir_flags)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        except OSError:
+            logger.debug("[%s] 跳过目录 fsync path=%s", domain, path.parent)
     except BaseException:
         try:
             temporary.unlink(missing_ok=True)
